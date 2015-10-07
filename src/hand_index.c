@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include "hand_index.h"
@@ -9,7 +10,7 @@
 #define ROUND_SHIFT            4
 #define ROUND_MASK             0xf
 
-static uint8_t nth_unset[1<<RANKS][RANKS];
+static card_t nth_unset[1<<RANKS][RANKS];
 static bool equal[1<<(SUITS-1)][SUITS];
 static uint_fast32_t nCr_ranks[RANKS+1][RANKS+1], rank_set_to_index[1<<RANKS], index_to_rank_set[RANKS+1][1<<RANKS], (*suit_permutations)[SUITS];
 static hand_index_t nCr_groups[MAX_GROUP_INDEX][SUITS+1];
@@ -69,7 +70,7 @@ static void __attribute__((constructor)) hand_index_ctor() {
   }
 }
 
-void enumerate_configurations_r(uint_fast32_t rounds, const uint8_t cards_per_round[],
+void enumerate_configurations_r(uint_fast32_t rounds, const card_t cards_per_round[],
     uint_fast32_t round, uint_fast32_t remaining,
     uint_fast32_t suit, uint_fast32_t equal, uint_fast32_t used[], uint_fast32_t configuration[],
     void (*observe)(uint_fast32_t, uint_fast32_t[], void*), void * data) {
@@ -113,7 +114,7 @@ void enumerate_configurations_r(uint_fast32_t rounds, const uint8_t cards_per_ro
   }
 }
 
-void enumerate_configurations(uint_fast32_t rounds, const uint8_t cards_per_round[],
+void enumerate_configurations(uint_fast32_t rounds, const card_t cards_per_round[],
     void (*observe)(uint_fast32_t, uint_fast32_t[], void*), void * data) {
   uint_fast32_t used[SUITS] = {0}, configuration[SUITS] = {0};
   enumerate_configurations_r(rounds, cards_per_round, 0, cards_per_round[0], 0, (1<<SUITS) - 2, used, configuration, observe, data);
@@ -176,7 +177,7 @@ out:;
   indexer->configuration_to_equal[round][id] = equal>>1;
 }
 
-void enumerate_permutations_r(uint_fast32_t rounds, const uint8_t cards_per_round[],
+void enumerate_permutations_r(uint_fast32_t rounds, const card_t cards_per_round[],
     uint_fast32_t round, uint_fast32_t remaining,
     uint_fast32_t suit, uint_fast32_t used[], uint_fast32_t count[],
     void (*observe)(uint_fast32_t, uint_fast32_t[], void*), void * data) {
@@ -209,7 +210,7 @@ void enumerate_permutations_r(uint_fast32_t rounds, const uint8_t cards_per_roun
   }
 }
 
-void enumerate_permutations(uint_fast32_t rounds, const uint8_t cards_per_round[],
+void enumerate_permutations(uint_fast32_t rounds, const card_t cards_per_round[],
     void (*observe)(uint_fast32_t, uint_fast32_t[], void*), void * data) {
   uint_fast32_t used[SUITS] = {0}, count[SUITS] = {0};
   enumerate_permutations_r(rounds, cards_per_round, 0, cards_per_round[0], 0, used, count, observe, data);
@@ -300,7 +301,7 @@ void tabulate_permutations(uint_fast32_t round, uint_fast32_t count[], void * da
   indexer->permutation_to_configuration[round][idx] = low;
 }
 
-bool hand_indexer_init(uint_fast32_t rounds, const uint8_t cards_per_round[], hand_indexer_t * indexer) {
+bool hand_indexer_init(uint_fast32_t rounds, const card_t cards_per_round[], hand_indexer_t * indexer) {
   if (rounds == 0) {
     return false;
   }
@@ -394,7 +395,7 @@ void hand_indexer_state_init(const hand_indexer_t * indexer, hand_indexer_state_
   }
 }
 
-hand_index_t hand_index_all(const hand_indexer_t * indexer, const uint8_t cards[], hand_index_t indices[]) {
+hand_index_t hand_index_all(const hand_indexer_t * indexer, const card_t cards[], hand_index_t indices[]) {
   if (indexer->rounds) {
     hand_indexer_state_t state; hand_indexer_state_init(indexer, &state);
 
@@ -408,12 +409,12 @@ hand_index_t hand_index_all(const hand_indexer_t * indexer, const uint8_t cards[
   return 0;
 }
 
-hand_index_t hand_index_last(const hand_indexer_t * indexer, const uint8_t cards[]) {
+hand_index_t hand_index_last(const hand_indexer_t * indexer, const card_t cards[]) {
   hand_index_t indices[MAX_ROUNDS];
   return hand_index_all(indexer, cards, indices);
 }
 
-hand_index_t hand_index_next_round(const hand_indexer_t * indexer, const uint8_t cards[], hand_indexer_state_t * state) {
+hand_index_t hand_index_next_round(const hand_indexer_t * indexer, const card_t cards[], hand_indexer_state_t * state) {
   uint_fast32_t round = state->round++;
   assert(round < indexer->rounds);
 
@@ -507,7 +508,7 @@ hand_index_t hand_index_next_round(const hand_indexer_t * indexer, const uint8_t
   return index;
 }
 
-bool hand_unindex(const hand_indexer_t * indexer, uint_fast32_t round, hand_index_t index, uint8_t cards[]) {
+bool hand_unindex(const hand_indexer_t * indexer, uint_fast32_t round, hand_index_t index, card_t cards[]) {
   if (round >= indexer->rounds || index >= indexer->round_size[round]) {
     return false;
   }
@@ -557,7 +558,7 @@ bool hand_unindex(const hand_indexer_t * indexer, uint_fast32_t round, hand_inde
     suit_index[i] = group_index; ++i;
   }
 
-  uint8_t location[MAX_ROUNDS]; memcpy(location, indexer->round_start, MAX_ROUNDS);
+  card_t location[MAX_ROUNDS]; memcpy(location, indexer->round_start, MAX_ROUNDS);
   for(uint_fast32_t i=0; i<SUITS; ++i) {
     uint_fast32_t used = 0, m = 0;
     for(uint_fast32_t j=0; j<indexer->rounds; ++j) {
