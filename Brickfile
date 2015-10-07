@@ -1,0 +1,8 @@
+-
+  name: cpp_utilities
+  version: 0.0.1
+  location: git@github.com:dmorrill10/cpp_utilities.git
+-
+  name: Catch
+  version: 1.2.1-dmorrill10
+  location: git@github.com:dmorrill10/Catch.git

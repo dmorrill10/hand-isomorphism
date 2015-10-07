@@ -16,7 +16,7 @@
 #define RANKS    13
 #define CARDS    52
 
-typedef uint_fast32_t card_t;
+typedef uint_fast8_t card_t;
 
 extern const char RANK_TO_CHAR[];
 extern const char SUIT_TO_CHAR[];
