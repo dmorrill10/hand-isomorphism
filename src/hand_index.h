@@ -13,6 +13,9 @@
 
 #include <inttypes.h>
 #include <stddef.h>
+#include <cassert>
+#include <cpp_utilities/src/lib/array.h>
+
 #include "deck.h"
 
 namespace HandIsomorphism {
@@ -31,44 +34,113 @@ class hand_indexer_t {
  *
  * @param deck
  */
-  hand_indexer_t(const Deck::Deck& deck) : deck_(deck) {}
+  hand_indexer_t(const Deck::Deck& deck)
+      : deck_(deck),
+        configurations(deck_.numRounds(), 0),
+        permutations(deck_.numRounds()),
+        round_size(deck_.numRounds()),
+        permutation_to_configuration(deck_.numRounds()),
+        permutation_to_pi(deck_.numRounds()),
+        configuration_to_equal(deck_.numRounds()),
+        configuration(deck_.numSuits(), deck_.numRounds()),
+        configuration_to_suit_size(deck_.numSuits(), deck_.numRounds()),
+        configuration_to_offset(deck_.numRounds()) {
+    assert(deck_.numRounds() <= MAX_ROUNDS);
+    assert(deck_.numCardsRevealedByRound(deck_.numRounds() - 1) <= CARDS);
+
+    enumerate_configurations(deck_.numRounds(),
+                             deck_.numCardsRevealedOnRound().data(),
+                             count_configurations, configurations.data());
+
+    for (uint_fast32_t i = 0; i < deck_.numRounds(); ++i) {
+      configuration_to_equal[i] =
+          calloc(configurations[i], sizeof(uint_fast32_t));
+      configuration_to_offset[i] =
+          calloc(configurations[i], sizeof(hand_index_t));
+      configuration[i] =
+          calloc(configurations[i], SUITS * sizeof(uint_fast32_t));
+      configuration_to_suit_size[i] =
+          calloc(configurations[i], SUITS * sizeof(uint_fast32_t));
+      assert(!(!configuration_to_equal[i] || !configuration_to_offset[i] ||
+               !configuration[i] || !configuration_to_suit_size[i]));
+    }
+
+    configurations.assign(configurations.size(), 0);
+    enumerate_configurations(deck_.numRounds(),
+                             deck_.numCardsRevealedOnRound().data(),
+                             tabulate_configurations, this);
+
+    for (uint_fast32_t i = 0; i < deck_.numRounds(); ++i) {
+      hand_index_t accum = 0;
+      for (uint_fast32_t j = 0; j < configurations[i]; ++j) {
+        hand_index_t next = accum + configuration_to_offset[i][j];
+        configuration_to_offset[i][j] = accum;
+        accum = next;
+      }
+      round_size[i] = accum;
+    }
+
+    memset(permutations, 0, sizeof(permutations));
+    enumerate_permutations(deck_.numRounds(), cards_per_round,
+                           count_permutations, this);
+
+    for (uint_fast32_t i = 0; i < deck_.numRounds(); ++i) {
+      indexer->permutation_to_configuration[i] =
+          calloc(indexer->permutations[i], sizeof(uint_fast32_t));
+      indexer->permutation_to_pi[i] =
+          calloc(indexer->permutations[i], sizeof(uint_fast32_t));
+      if (!indexer->permutation_to_configuration ||
+          !indexer->permutation_to_pi) {
+        hand_indexer_free(indexer);
+        return false;
+      }
+    }
+
+    enumerate_permutations(deck_.numRounds(), cards_per_round,
+                           tabulate_permutations, indexer);
+
+    return true;
+  }
   ~hand_indexer_t() {
     for (uint_fast32_t i = 0; i < deck_.numRounds(); ++i) {
       free(permutation_to_configuration[i]);
       free(permutation_to_pi[i]);
       free(configuration_to_equal[i]);
       free(configuration_to_offset[i]);
-      free(configuration[i]);
-      free(configuration_to_suit_size[i]);
     }
   }
-
- private:
-  const Deck::Deck& deck_;
-  uint8_t round_start[MAX_ROUNDS];
-  uint_fast32_t configurations[MAX_ROUNDS], permutations[MAX_ROUNDS];
-  hand_index_t round_size[MAX_ROUNDS];
-
-  uint_fast32_t *permutation_to_configuration[MAX_ROUNDS],
-      *permutation_to_pi[MAX_ROUNDS], *configuration_to_equal[MAX_ROUNDS];
-  uint_fast32_t (*configuration[MAX_ROUNDS])[SUITS];
-  uint_fast32_t (*configuration_to_suit_size[MAX_ROUNDS])[SUITS];
-  hand_index_t* configuration_to_offset[MAX_ROUNDS];
-
-  /**
-   * Free a hand indexer.
-   *
-   * @param indexer
-   */
-  void hand_indexer_free(hand_indexer_t* indexer);
 
   /**
    * @param indexer
    * @param round
    * @returns size of index for hands on round
    */
-  hand_index_t hand_indexer_size(const hand_indexer_t* indexer,
-                                 uint_fast32_t round);
+  hand_index_t size(uint_fast32_t round) {
+    assert(round < deck_.numRounds());
+    return round_size[round];
+  }
+
+  inline size_t numRounds() const { return deck_.numRounds(); }
+
+  inline const std::vector<size_t>& cards_per_round() const {
+    return deck_.numCardsRevealedOnRound();
+  }
+
+ public:
+  std::vector<uint_fast32_t> configurations;
+  std::vector<uint_fast32_t> permutations;
+  std::vector<hand_index_t> round_size;
+
+  std::vector<uint_fast32_t*> permutation_to_configuration;
+  std::vector<uint_fast32_t*> permutation_to_pi;
+  std::vector<uint_fast32_t*> configuration_to_equal;
+  Utilities::Array::MultiDimensionalArray<uint_fast32_t> configuration;
+  Utilities::Array::MultiDimensionalArray<uint_fast32_t>
+      configuration_to_suit_size;
+  std::vector<hand_index_t*> configuration_to_offset;
+
+ private:
+  const Deck::Deck& deck_;
 
   /**
    * Initialize a hand index state.  This is used for incrementally indexing a
